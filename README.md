@@ -1,6 +1,6 @@
 # retreactive
 
-A Clojure library designed to ... well, that part is up to you.
+A clojure library for building distributed reactive systems that are persistent in all senses of the word.
 
 ## Usage
 
@@ -8,22 +8,28 @@ Don't.
 
 ## Notes
 
-* Every req is evaluated using the same clojure function.
-* The req includes the time for which a result is desired.
-* The trail of requests is passed down along recursive queries, so the reqfn receives a list.  (How? Part of state value for :running?)
-* The reqfn performs a temporal lookup, finding a uuid value and state: leaf, potential, complete (or maybe nothing)
-* If the result is a leaf, then add to the leaf's set of dependent keys and return the value.
-* If the result is complete, just return its value.
-* If the result is potential, then continue evaluation.
-* When a leaf is added, do temporal search for previous.
-* For each dependent keys of the leaf, add a "potential" at the leaf's time to the temporal database.
-* For brand new calculations, we obviously find nothing.
+* Using girder, the 2nd element of the vector will be an instant.  Nil means now.
+* Look for placeholder ```[f,nil,....]``` in ```:milestones``` using ```as-of```.
+* If we find one at ```tx-time```,
+   * do a regular search in ```:store``` for ```[f,tx-time,...]```.
+   * if there's data, return it, along with the ```tx-time``` used.
+   * while calculating it, also add our ref to ```:dep/dependents``` for each node we use
+* If we don't find one:
+   * Search for existence of a placeholder at current time.
+   * If there is one, then this is an illegal req unless req was for nil time.
+   * If time is nil, then we populate placeholder directly at current time.
+* When inserting leaf nodes directly, also traverse the dependents and populate placeholders for all of them.
 
+This is then fully reactive, lazy and replayable.  The limitation is that brand new reqs cannot in the past, because
+they were never stored as dependents and thus never got placeholders.
+
+What if an apparently legal request in the past asks for a dependency it never requested before.  Well, that will break
+everything.
 
 
 ## License
 
-Copyright © 2014 FIXME
+Copyright © 2014 Peter Fraenkel
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.

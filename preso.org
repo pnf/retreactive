@@ -1,0 +1,28 @@
+#+TITLE: Persistent, functional graphs
+#+AUTHOR: Peter Fraenkel pnf@acyc.lc
+
+
+* This is a test
+
+There is some text here.
+
+Here is an alpha:  \alpha
+
+Here is a different alpha: $\alpha$
+
+\begin{equation}
+x = \sqrt{5}
+\end{equation}
+
+* This is another test
+
+\begin{equation}
+y = \frac{1}{2}
+\end{equation}
+
+#+BEGIN_SRC emacs-lisp
+  (defun org-xor (a b)
+     "Exclusive or."
+     (if a (not b) b))
+#+END_SRC
+

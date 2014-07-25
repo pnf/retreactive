@@ -7,66 +7,75 @@
              ;[clj-time.format :as cf]
              ))
 
-(def schema-tx
-[{:db/id #db/id[:db.part/db]
-      :db/ident :bitemp/k
-      :db/valueType :db.type/string
-      :db/cardinality :db.cardinality/one
-      :db/doc "Non-temporal part of the key"
-      :db.install/_attribute :db.part/db}
 
-     {:db/id #db/id[:db.part/db]
-     :db/ident :bitemp/tv
+;; The trouble with this is that it assumes same dependents across time.
+(def schema-tx
+  [
+   ;; milestones
+   ;; accessed with-as of, and populated during insert of leaf data
+   ;; record is inserted for leaf data itself and for dependents
+   {:db/id #db/id[:db.part/db]
+    :db/ident :milestones/key
+    :db/valueType :db.type/string
+    :db/doc "Key, stripped of time"
+    :db/cardinality :db.cardinality/one
+    :db/unique :db.unique/identity
+    :db.install/_attribute :db.part/db}
+
+   {:db/id #db/id[:db.part/db]
+    :db/ident :milestones/uuid
+    :db/valueType :db.type/uuid
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
+   {:db/id #db/id[:db.part/db]
+    :db/ident :milestones/dummy
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
+
+;; @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key "howdy" :milestones/dummy (d/squuid)}])
+;; (q '[:find ?k ?t ?du :where [?e :milestones/key "howdy"] [?e :milestones/key ?k] [?e :milestones/dummy ?du ?tx] [?tx :db/txInstant ?t]] (db conn))
+;;(q '[:find ?e ?k ?t ?du :where [?e :milestones/key "howdy"] [?e :milestones/key ?k] [?e :milestones/dummy ?du ?tx] [?tx :db/txInstant ?t]] (d/as-of (db conn) #inst "2014-07-24T17:22:10.990-00:00"))
+
+
+   {:db/id #db/id[:db.part/db]
+    :db/ident :dep/node
+    :db/valueType :db.type/ref
+    :db/doc "Reference to store entity"
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
+   {:db/id #db/id[:db.part/db]
+    :db/ident :dep/dependents
+    :db/valueType :db.type/ref
+    :db/doc "Reference to store entities - populated during calculations"
+    :db/cardinality :db.cardinality/many
+    :db/isComponent true
+    :db.install/_attribute :db.part/db}
+
+   {:db/id #db/id[:db.part/db]
+    :db/ident :store/key
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
+   {:db/id #db/id[:db.part/db]
+    :db/ident :store/value
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
+  {:db/id #db/id[:db.part/db]
+     :db/ident :store/t
      :db/valueType :db.type/instant
      :db/cardinality :db.cardinality/one
-     :db/doc "Time for which data is relevant"
-     :db/index true
      :db.install/_attribute :db.part/db}
+]
 
-     {:db/id #db/id[:db.part/db]
-      :db/ident :bitemp/index
-      :db/valueType :db.type/string
-      :db/cardinality :db.cardinality/one
-      :db/doc "concatenated k and tv"
-      :db/unique :db.unique/identity
-      :db.install/_attribute :db.part/db}
-
-     {:db/id #db/id[:db.part/db]
-      :db/ident :bitemp/value
-      :db/valueType :db.type/ref
-      :db/cardinality :db.cardinality/one
-      :db/doc "reference to blob value"
-      :db.install/_attribute :db.part/db}
-
-
-     {:db/id #db/id[:db.part/db]
-      :db/ident :store/type
-      :db/valueType :db.type/ref
-      :db/cardinality :db.cardinality/one
-      :db/doc "Potential or actual"
-      :db.install/_attribute :db.part/db}
-
- [:db/add #db/id[:db.part/db] :db/ident :store.type/leaf]
- [:db/add #db/id[:db.part/db] :db/ident :store.type/potential]
- [:db/add #db/id[:db.part/db] :db/ident :store.type/complete]
- [:db/add #db/id[:db.part/db] :db/ident :store.type/reference]
-
-
-     {:db/id #db/id[:db.part/db]
-      :db/ident :store/value
-      :db/valueType :db.type/string
-      :db/cardinality :db.cardinality/one
-      :db/doc "the blob itself"
-      :db.install/_attribute :db.part/db}
-
-     {:db/id #db/id[:db.part/db]
-      :db/ident :store/dependents
-      :db/valueType :db.type/ref
-      :db/doc "Set of all nodes known to depend on this one."
-      :db/cardinality :db.cardinality/many
-      :db.install/_attribute :db.part/db}
-     ]
 )
+
 
 (def uri "datomic:free://localhost:4334/acyclic")
 
@@ -77,11 +86,16 @@
     @(d/sync conn)
     @(d/transact conn schema-tx)
     @(d/transact conn [{:db/id (d/tempid :db.part/db)
-                        :db/ident :bitemp 
+                        :db/ident :milestones
                         :db.install/_partition :db.part/db}
                        {:db/id (d/tempid :db.part/db)
                         :db/ident :store
-                        :db.install/_partition :db.part/db}])
+                        :db.install/_partition :db.part/db}
+                       {:db/id (d/tempid :db.part/db)
+                        :db/ident :dep
+                        :db.install/_partition :db.part/db}
+
+])
     conn))
 
 
@@ -119,10 +133,75 @@
 
 
 
-;;   Actual tx time of leaf node is important.
-;;   Whenever a leaf node is updated, insert placeholder in tv index for
-;;   dependent node at tx time of leaf node.
-;;   Query for dependent node will hit this placeholder and cause valuation.
-;;   During recursive queries, push down full list of dependent query keys, so
-;;   when we hit the leaf, can update its set.
+(defn add-ms [i ms] (java.util.Date. (+ (.getTime i) ms)))
+
+(comment
+
+  (def conn (recreate-db uri))
+
+
+  ;; Demonstrate uuid is necessary to avoid always getting the same tx time
+  (def tx-nouiid1  (:tx-data @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key "leaf1"}])))
+  (def t1 (-> tx-nouiid1 first :v))
+  (Thread/sleep 1000)
+  (def tx-nouiid2  (:tx-data @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key "leaf1"}])))
+  (def t2 (-> tx-nouiid2 first :v))
+  (Thread/sleep 1000)
+  (def tx-nouiid3  (:tx-data @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key "leaf11"}])))
+  (def t3 (-> tx-nouiid3 first :v))
+
+  (def t2? (-> (q '[:find ?t :where [?e :milestones/key "leaf1" ?tx] [?tx :db/txInstant ?t]] (d/as-of (db conn) (add-ms t3 -1)))
+               first first))
+  (assert (= t1 t2?))
+
+  ;; same thing, but with uuid
+  (def tx-nouiid1  (:tx-data @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key  "leaf1" :milestones/uuid (d/squuid)}])))
+  (def t1 (-> tx-nouiid1 first :v))
+  (Thread/sleep 1000)
+  (def tx-nouiid2  (:tx-data @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key  "leaf1" :milestones/uuid (d/squuid)}])))
+  (def t2 (-> tx-nouiid2 first :v))
+  (Thread/sleep 1000)
+  (def tx-nouiid3  (:tx-data @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key  "leaf1" :milestones/uuid (d/squuid)}])))
+  (def t3 (-> tx-nouiid3 first :v))
+  (def t2? (-> (q '[:find ?t :where [?e :milestones/key "leaf1"] [?e :milestones/uuid _ ?tx] [?tx :db/txInstant ?t]] (d/as-of (db conn) (add-ms t3 -1)))
+               first first))
+  (assert (= t2 t2?))
+
+
+
+    
+    ;; create some data
+
+    (def tx1a  (:tx-data @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key "leaf1" :milestones/uuid (d/squuid)}])))
+    (def t1 (-> tx1a first :v))
+    (def tx1b (:tx-data @(d/transact conn [{:db/id (d/tempid :store) :store/key "leaf1" :store/t t1 :store/value "hello"}])))
+
+    (Thread/sleep 5000)
+
+    ;; update it
+
+    (def tx2a  (:tx-data @(d/transact conn [{:db/id (d/tempid :milestones)  :milestones/key "leaf1" :milestones/uuid (d/squuid)}])))
+    (def t2 (-> tx2a first :v))
+    (def tx2b (:tx-data @(d/transact conn [{:db/id (d/tempid :store) :store/key "leaf1" :store/t t1 :store/value "goodbye"}])))
+
+    ;; Find data as of a moment before second milestone
+    (q '[:find ?t :where [?e :milestones/key "leaf1"] [?e :milestones/uuid _ ?tx] [?tx :db/txInstant ?t]] (d/as-of (db conn) (add-ms t2 -1) ))
+
+    
+
+
+
+
+    ;;   Actual tx time of leaf node is important.
+    ;;   Whenever a leaf node is updated, insert placeholder in tv index for
+    ;;   dependent node at tx time of leaf node.
+    ;;   Query for dependent node will hit this placeholder and cause valuation.
+    ;;   During recursive queries, push down full list of dependent query keys, so
+    ;;   when we hit the leaf, can update its set.
+
+    )
+
+
+
+
 
