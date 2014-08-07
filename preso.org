@@ -1,5 +1,6 @@
 #+TITLE: Persistent, functional graphs
 #+AUTHOR: Peter Fraenkel pnf@acyc.lc
+#+STARTUP: latexpreview
 
 
 * This is a test
