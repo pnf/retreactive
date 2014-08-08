@@ -1,9 +1,11 @@
 (ns acyclic.retreactive.datomic
 (:use acyclic.retreactive.back-end
       [datomic.api :only [q db] :as dmc]
+      [taoensso.timbre :as timbre]
       [clojure.pprint])
 (:require  digest
            [acyclic.girder.grid :as grid]))
+(timbre/refer-timbre)
 
 (def schema-tx [{:db/id #db/id[:db.part/db]
                        :db/ident :graph/key
@@ -65,6 +67,7 @@
 (defn  jd 
   ([tv]
      (condp = (type tv)
+       nil (java.util.Date.)
        java.lang.Long (java.util.Date. tv)
        java.lang.Integer (java.util.Date. (long tv))
        java.util.Date tv
@@ -90,8 +93,6 @@
 (-> @(dmc/transact conn [{:db/id (dmc/tempid :graph) :graph/clock (dmc/squuid)}])
     :tx-data first :v))
 
-
-
 (defn- recreate-db* [uri]
     (dmc/delete-database uri)
     (dmc/create-database uri)
@@ -110,60 +111,69 @@
 (defn- insert-value* [conn k t value deps]
     (:tx-data @(dmc/transact conn (insert-tx k t value deps))))
 
+(defn- assure-db [conn-or-db t tt]
+  (let [d   (if (.isInstance datomic.peer.Connection conn-or-db)
+              (db conn-or-db)
+              conn-or-db)
+        td  (:db/txInstant (dmc/entity d (dmc/t->tx (dmc/basis-t d))))]
+    (when (or (and t  (.before td t))
+              (and tt (.before td tt)))
+      (throw (ex-info "Stale database" {:td td :t t :tt tt})))
+    d))
+
+(defn- get-data-at* [conn k t tt]
+    (let [tf      (t-format (jd t))
+          kh      (k-hash k)
+          idx     (str kh idx-sep tf)
+          d       (if (.isInstance datomic.peer.Connection conn) (db conn) conn) 
+          d       (if (nil? tt) d (dmc/as-of d tt))
+          data    (some-> (dmc/index-range d :graph/indexkey idx nil)
+                          seq first)
+          kf      (.v data)]
+      (if (.startsWith kf kh) [data d (.e data)])))
+
+#_(defn- get-entity-deps [d e]
+  (q '[:find ?d :in $ ?e :where [?e :graph/dep ?d]] d e))
+
+(defn- get-entity-deps [d e]
+  (map :db/id (:graph/dep (dmc/entity d e))))
+
+(defn- get-entity-leaves [d e]
+  (if (seq (get-entity-deps d e)) 
+    (loop [encountered #{}
+           leaves      #{}
+           es          #{e}]
+      (if-not (seq es) (seq  leaves)
+              (let [ds         (map #(get-entity-deps d %) es)
+                    ns         (filter (comp not encountered) (flatten ds))
+                    ls         (->> (map #(vector (not (seq %1)) %2) ds es)
+                                    (filter first)
+                                    (map second))]
+                (recur (into encountered es)
+                       (into leaves ls)
+                       (set (flatten ns))))))))
+
+(defn- e->millis [d e]
+  (->> e
+       (dmc/entity d)
+       :graph/t
+       .getTime))
+
+(defn- dirty? [d k e t tt]
+  (let [ls   (get-entity-leaves d e)
+        kls  (map #(:graph/key (dmc/entity d %)) ls)
+        ls2  (map #(last (get-data-at* d % t tt)) kls)]
+    (debug k e t tt kls ls ls2)
+    (not-every? identity (map = ls ls2))))
+
+ ; ["mulberry" 303465209267180 #inst "2014-08-08T13:59:07.051-00:00" #inst "2014-08-08T13:59:07.056-00:00"]
 (defn- get-at* [conn k t tt]
-    (let [tf  (t-format (jd t))
-          kh  (k-hash k)
-          idx (str kh idx-sep tf)
-          d   (if (.isInstance datomic.peer.Connection conn) (db conn) conn) 
-          d   (if (nil? tt) d (dmc/as-of d tt))
-          es  (some-> (dmc/index-range d :graph/indexkey idx nil)
-                      seq first .v)]
-      (or  (and es
-                (.startsWith es kh)
-                (first (q '[:find ?v ?e ?t ?tt
-                            :in $ ?i ?k
-                            :where
-                            [?e :graph/indexkey ?i ?tx]
-                            [?tx :db/txInstant ?tt]
-                            [?e :graph/key   ?k]
-                            [?e :graph/value ?v]
-                            [?e :graph/t     ?t]]
-                          d es k)))
-           nil)))
+  (let [[data d e] (get-data-at* conn k t tt)]
+    (if (or (nil? data) (dirty? d k e t tt)) nil
+        (let [tt    (:db/txInstant (dmc/entity d (.tx data)))
+              [v t] ((juxt :graph/value :graph/t) (dmc/entity d e))]
+          [v e t tt]))))
 
-(defn- get-entity-at* [conn k t tt]
-    (let [tf  (t-format (jd t))
-          kh  (k-hash k)
-          idx (str kh idx-sep tf)
-          d   (if (.isInstance datomic.peer.Connection conn) (db conn) conn) 
-          d   (if (nil? tt) d (dmc/as-of d tt))
-          e   (some-> (dmc/index-range d :graph/indexkey idx nil)
-                      seq first .e)]
-      e))
-
-(defn- get-leaves* [e]
-  (q '[:find ?d :with ?e :where [?e :graph/dep ?d]] d ec)  YOU STPPPED HERE
-  (loop [e      e
-         leaves ()]
-    ()
-
-)
-
-)
-
-
-  
-;; #_
-
-
-;; #_(defn graph-time [conn]
-;;   (-> @(dmc/transact conn [{:db/id (dmc/tempid :graph) :graph/clock (dmc/squuid)}]) :tx-data first :v)
-;; )
-
-;; #_(defn graph-time [conn]
-;;   (let [xn  (-> @(dmc/transact conn [{:db/id (dmc/tempid :graph) :graph/clock (dmc/squuid)}]) :tx-data first :v)@(dmc/transact conn [{:db/id (dmc/tempid :graph) :graph/clock (dmc/squuid)}])
-;;         txd (:tx-data xn)
-;    (-> txd first :v)
 
 
 (defrecord Datomic-Retreactive-Db [uri conn]
@@ -171,23 +181,11 @@
   Retreactive-Db
 
   (recreate-db [this] (recreate-db* (:uri this)))
-
-  (connect [this]
-    (let [uri (:uri this)
-          conn (dmc/connect uri)]
-      conn))
-
   (insert-leaf [this k value] (insert-leaf* (:conn this)))
-
   (insert-leaves [this k-values] (insert-leaves* (:conn this) k-values))
-
   (insert-value [this k t value & deps] (insert-value* (:conn this) k t value deps))
-
-
   (get-at [this k t & [tt]] (get-at* (:conn this) k t tt))
 
-  #_(get-if-valid [this k t & [tt]]
-    (let [[v e t t tt] (get-at k t tt)
-])))
+)
 
 (defn default-local [] (->Datomic-Retreactive-Db local-uri (dmc/connect local-uri)))

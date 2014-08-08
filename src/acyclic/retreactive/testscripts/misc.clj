@@ -57,45 +57,33 @@
          (assert (= "mulberry"      (first (get-at* d k1 t2 nil ))))
 
          (def tq (add-ms t3 -1))
-         (def kc "cricket")
-         (def qc (get-at* conn kc tq nil))
-         (assert (nil? qc))
+         (def kc1 "cricket")
+         (def kc2 "grasshopper")
+         (def kc3 "naturalist")
+         (def qc1 (get-at* conn kc1 tq nil))
+         (def qc2 (get-at* conn kc2 tq nil))
+         (assert (nil? qc1))
+         (assert (nil? qc2))
          (def qd1 (get-at* conn k1 tq nil))  ;; second value is entity
          (def qd2 (get-at* conn k2 tq nil))  ;; second value is entity
-         (def tx3 (insert-value* conn kc tq "chester likes mulberry" [(second qd1) (second qd2)]))
-         (def d (db conn))
+         (def tx3 (insert-value* conn kc1 tq "chester eats mulberry and oak" [(second qd1) (second qd2)]))
+         (def tx4 (insert-value* conn kc2 tq "buster eats mulberry" [(second qd1)]))
+         (def qd3 (get-at* conn kc1 tq nil))
+         (def qd4 (get-at* conn kc2 tq nil))
+         (def tx5 (insert-value* conn kc3 tq "Euell eats buster and chester"
+                                 [(second qd3) (second qd4)]))
+         (def qd5 (get-at* conn kc3 tq nil))
+         (assert (.startsWith (first qd5) "Euell"))
 
-)
+         (def tx6 (insert-leaf* conn k1 "ivy"))
+         (def t6 (:v (nth tx6 3)))
 
-
-
-(comment "dumb"
-
-(def dumb-schema [{:db/id #db/id[:db.part/db]
-                   :db/ident :dumb/name
-                   :db/valueType :db.type/string
-                   :db/cardinality :db.cardinality/one
-                   :db.install/_attribute :db.part/db}
-
-                  {:db/id #db/id[:db.part/db]
-                   :db/ident :dumb/friend
-                   :db/valueType :db.type/ref
-                   :db/cardinality :db.cardinality/many
-                   :db.install/_attribute :db.part/db}
-
-                  {:db/id #db/id[:db.part/db]
-                   :db/ident :dumb
-                   :db.install/_partition :db.part/db}
-                  ])
-(def dumb-uri "datomic:free://localhost:4334/dumb")
-(dmc/delete-database dumb-uri)
-(dmc/create-database dumb-uri)
-(def dumb-conn (dmc/connect dumb-uri))
-@(dmc/transact dumb-conn dumb-schema)
-(def dumb-tx (:tx-data @(dmc/transact dumb-conn [{:db/id (dmc/tempid :dumb) :dumb/name "tdee"}])))
-(def dumb-e1  (:e (second dumb-tx)))
-(def dumb-tx2 (:tx-data @(dmc/transact dumb-conn [{:db/id (dmc/tempid :dumb) :dumb/name "tdum" :dumb/friend dumb-e1 }])))
-(:dumb/name (dmc/entity (db dumb-conn) dumb-e1)) ;; --> tdee
+         (def qd6  (get-at* conn kc3 t6 nil))
+         (assert nil? qd6)
 
 
 )
+
+
+
+
