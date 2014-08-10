@@ -1,9 +1,11 @@
 (ns acyclic.retreactive.datomic
 (:use acyclic.retreactive.back-end
+      acyclic.retreactive.util
       [datomic.api :only [q db] :as dmc]
       [taoensso.timbre :as timbre]
       [clojure.pprint])
 (:require  digest
+           [clj-time.coerce :as co]
            [acyclic.girder.grid :as grid]))
 (timbre/refer-timbre)
 
@@ -143,7 +145,7 @@
     (loop [encountered #{}
            leaves      #{}
            es          #{e}]
-      (if-not (seq es) (seq  leaves)
+      (if-not (seq es) leaves
               (let [ds         (map #(get-entity-deps d %) es)
                     ns         (filter (comp not encountered) (flatten ds))
                     ls         (->> (map #(vector (not (seq %1)) %2) ds es)
@@ -162,9 +164,9 @@
 (defn- dirty? [d k e t tt]
   (let [ls   (get-entity-leaves d e)
         kls  (map #(:graph/key (dmc/entity d %)) ls)
-        ls2  (map #(last (get-data-at* d % t tt)) kls)]
+        ls2  (set (map #(last (get-data-at* d % t tt)) kls))]
     (debug k e t tt kls ls ls2)
-    (not-every? identity (map = ls ls2))))
+    (not= ls ls2)))
 
  ; ["mulberry" 303465209267180 #inst "2014-08-08T13:59:07.051-00:00" #inst "2014-08-08T13:59:07.056-00:00"]
 (defn- get-at* [conn k t tt]
@@ -175,16 +177,18 @@
           [v e t tt]))))
 
 
-
 (defrecord Datomic-Retreactive-Db [uri conn]
 
   Retreactive-Db
 
-  (recreate-db [this] (recreate-db* (:uri this)))
-  (insert-leaf [this k value] (insert-leaf* (:conn this)))
+  (recreate-db [this] (->Datomic-Retreactive-Db
+                       uri
+                       (recreate-db* (:uri this))))
+
+  (insert-leaf [this k value] (insert-leaf* (:conn this) k value))
   (insert-leaves [this k-values] (insert-leaves* (:conn this) k-values))
-  (insert-value [this k t value & deps] (insert-value* (:conn this) k t value deps))
-  (get-at [this k t & [tt]] (get-at* (:conn this) k t tt))
+  (insert-value [this k t value deps] (println deps) (insert-value* (:conn this) k t value deps))
+  (get-at [this k t] (get-at* (:conn this) k t nil))
 
 )
 
