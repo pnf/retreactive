@@ -2,7 +2,7 @@
   (:use [datomic.api :only [q db] :as dmc]
         clojure.pprint
         [acyclic.retreactive.util]
-        [acyclic.retreactive.back-end])
+        [acyclic.retreactive.temporal])
   (:require  digest
              [acyclic.girder.grid :as grid]
              [acyclic.retreactive.datomic :as datomic])

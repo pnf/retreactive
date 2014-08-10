@@ -1,5 +1,5 @@
 (ns acyclic.retreactive.datomic
-(:use acyclic.retreactive.back-end
+(:use acyclic.retreactive.temporal
       acyclic.retreactive.util
       [datomic.api :only [q db] :as dmc]
       [taoensso.timbre :as timbre]

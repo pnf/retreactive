@@ -1,4 +1,4 @@
-(ns acyclic.retreactive.back-end)
+(ns acyclic.retreactive.temporal)
 
 (defprotocol Retreactive-Db
 
